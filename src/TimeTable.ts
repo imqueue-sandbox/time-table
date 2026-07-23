@@ -1,12 +1,12 @@
 /*!
  * ISC License
- * 
- * Copyright (c) 2018, Imqueue Sandbox
- * 
+ *
+ * Copyright (c) 2026, Imqueue Sandbox
+ *
  * Permission to use, copy, modify, and/or distribute this software for any
  * purpose with or without fee is hereby granted, provided that the above
  * copyright notice and this permission notice appear in all copies.
- * 
+ *
  * THE SOFTWARE IS PROVIDED "AS IS" AND THE AUTHOR DISCLAIMS ALL WARRANTIES
  * WITH REGARD TO THIS SOFTWARE INCLUDING ALL IMPLIED WARRANTIES OF
  * MERCHANTABILITY AND FITNESS. IN NO EVENT SHALL THE AUTHOR BE LIABLE FOR
@@ -15,61 +15,82 @@
  * ACTION OF CONTRACT, NEGLIGENCE OR OTHER TORTIOUS ACTION, ARISING OUT OF
  * OR IN CONNECTION WITH THE USE OR PERFORMANCE OF THIS SOFTWARE.
  */
-import { IMQService, expose, profile, IMQServiceOptions } from '@imqueue/rpc';
-import * as moment from 'moment';
-import 'moment-timezone';
-import { Sequelize } from 'sequelize-typescript';
-import { Reservation, TimeTableOptions, initModels } from '.';
-import { today, tomorrow } from './lib';
+import type { IMessageQueue } from '@imqueue/rpc';
+import type { Sequelize } from 'sequelize-typescript';
+import { expose, IMQService, lock, logged, profile } from '@imqueue/rpc';
+import dayjs from 'dayjs';
+import { createRequire } from 'node:module';
+import { Op } from 'sequelize';
+import { today, tomorrow, rangeLower } from './lib/index.js';
+import { Reservation, createOrm, migrate } from './orm/index.js';
+import { TimeTableOptions } from './types/index.js';
 
-const Op = Sequelize.Op;
+const require = createRequire(import.meta.url);
+const pkg = require('../package.json');
 
 export class TimeTable extends IMQService {
+    private orm: Sequelize;
 
     /**
-     * @constructor
-     * @param {Partial<IMQServiceOptions>} options
-     * @param {string} name
+     * Returns current version of running service
+     *
+     * @return {{ name: string, version: string, repository?: string }}
      */
-    public constructor(options?: Partial<IMQServiceOptions>, name?: string) {
-        super(options, name);
-        initModels();
+    @logged()
+    @lock()
+    @profile()
+    @expose()
+    public version(): { name: string; version: string; repository?: string } {
+        const { name, version, repository } = pkg;
+
+        return { name, version, repository: repository?.url };
     }
 
     /**
-     * Returns a list of reservations starting from a given time (or from
-     * current time if omitted)
+     * Overrides start to establish the database connection and bootstrap schema
+     */
+    @profile()
+    public async start(): Promise<IMessageQueue | undefined> {
+        this.logger.log('Initializing PostgreSQL connection...');
+        this.orm = createOrm();
+        await this.orm.authenticate();
+        await migrate(this.orm);
+
+        return super.start();
+    }
+
+    /**
+     * Returns a list of reservations for a given date (or the current date if
+     * omitted)
      *
-     * @param {string} [date] - date to select reservations for, if not passed current date is used
-     * @param {string[]} [fields] - fields to select for reservations data list
+     * @param {string} [date] - date to select reservations for
+     * @param {string[]} [fields] - fields to select for each reservation
      * @return {Promise<Reservation[]>} - list of found reservations
      */
     @profile()
     @expose()
     public async list(
         date?: string,
-        fields?: string[]
+        fields?: string[],
     ): Promise<Reservation[]> {
         const dateObj = date ? new Date(date) : new Date();
 
         return await Reservation.findAll({
-            where: { [Op.and]: [
-                { duration: { [Op.contained]: [
-                    today(dateObj),
-                    tomorrow(dateObj),
-                ]}},
-                { deletedAt: null },
-            ]},
+            where: {
+                duration: {
+                    [Op.contained]: [today(dateObj), tomorrow(dateObj)],
+                },
+            },
             attributes: fields,
         });
     }
 
     /**
-     * Fetches and returns single reservation record by its identifier
+     * Fetches and returns a single reservation record by its identifier
      *
      * @param {string} id - reservation identifier to fetch
-     * @param {string[]} [fields] - fields to select for reservation data object
-     * @return {Promise<Reservation | null>} - reservation data object or null if not found
+     * @param {string[]} [fields] - fields to select for the reservation
+     * @return {Promise<Partial<Reservation> | null>} - reservation or null if not found
      */
     @profile()
     @expose()
@@ -77,15 +98,14 @@ export class TimeTable extends IMQService {
         id: string,
         fields?: string[],
     ): Promise<Partial<Reservation> | null> {
-        return await Reservation.findById(id, { attributes: fields });
+        return await Reservation.findByPk(id, { attributes: fields });
     }
 
     /**
-     * Makes a given reservation or throws a proper error
-     * if action is not possible
+     * Makes a given reservation or throws a proper error if it is not possible
      *
      * @param {Reservation} reservation - reservation data structure
-     * @param {string[]} [fields] - fields to select for updated reservations list
+     * @param {string[]} [fields] - fields to select for the updated reservations list
      * @return {Promise<Reservation[]>} - updated reservations list
      */
     @profile()
@@ -96,25 +116,23 @@ export class TimeTable extends IMQService {
     ): Promise<Reservation[]> {
         const { carId, userId, type } = reservation;
         const duration: [Date, Date] = [
-            moment.parseZone(reservation.duration[0]).toDate(),
-            moment.parseZone(reservation.duration[1]).toDate(),
+            dayjs(reservation.duration[0]).toDate(),
+            dayjs(reservation.duration[1]).toDate(),
         ];
 
         try {
-            const reservation = new Reservation({
-                carId,
-                userId,
-                type,
-                duration,
-            } as Reservation);
-
-            await reservation.save();
+            await Reservation.create({ carId, userId, type, duration } as any);
 
             return await this.list(duration[0].toISOString(), fields);
-        } catch (err) {
-            if (err.original && err.original.code === '23505') {
-                throw new Error('Time for given car has been already ' +
-                    'reserved at this date!');
+        } catch (err: any) {
+            if (
+                err?.original?.code === '23505' ||
+                err?.parent?.code === '23505'
+            ) {
+                throw new Error(
+                    'Time for given car has been already reserved at this' +
+                        ' date!',
+                );
             }
 
             throw err;
@@ -122,10 +140,10 @@ export class TimeTable extends IMQService {
     }
 
     /**
-     * Cancels reservation at a given time
+     * Cancels a reservation at a given time
      *
      * @param {string} id - reservation identifier
-     * @param {string[]} [fields] - fields to select for updated reservations list
+     * @param {string[]} [fields] - fields to select for the updated reservations list
      * @return {Promise<Reservation[]>} - updated reservations list
      */
     @profile()
@@ -140,7 +158,7 @@ export class TimeTable extends IMQService {
         await Reservation.destroy({ where: { id } });
 
         return this.list(
-            (reservation.duration as [Date, Date])[0].toISOString(),
+            rangeLower((reservation as Reservation).duration).toISOString(),
             fields,
         );
     }
@@ -154,6 +172,7 @@ export class TimeTable extends IMQService {
     @expose()
     public async config(): Promise<TimeTableOptions> {
         const options = new TimeTableOptions();
+
         delete (options as any).baseTimeHash;
 
         return options;

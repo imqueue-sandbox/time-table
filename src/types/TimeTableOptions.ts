@@ -1,7 +1,7 @@
 /*!
  * ISC License
  *
- * Copyright (c) 2018, Imqueue Sandbox
+ * Copyright (c) 2026, Imqueue Sandbox
  *
  * Permission to use, copy, modify, and/or distribute this software for any
  * purpose with or without fee is hereby granted, provided that the above
@@ -15,12 +15,12 @@
  * ACTION OF CONTRACT, NEGLIGENCE OR OTHER TORTIOUS ACTION, ARISING OUT OF
  * OR IN CONNECTION WITH THE USE OR PERFORMANCE OF THIS SOFTWARE.
  */
-import { property } from '@imqueue/rpc';
+import { classType, property } from '@imqueue/rpc';
 
+@classType()
 export class BaseTimeOption {
     /**
      * Time option key
-     *
      * @type {string}
      */
     @property('string')
@@ -28,7 +28,6 @@ export class BaseTimeOption {
 
     /**
      * Time options title
-     *
      * @type {string}
      */
     @property('string')
@@ -36,33 +35,30 @@ export class BaseTimeOption {
 
     /**
      * Time duration in minutes
-     *
      * @type {number}
      */
     @property('number')
     public duration: number;
 }
 
+@classType()
 export class TimeTableOptions {
     /**
-     * Start working time in minutes (relatively to the day start time)
-     *
-     * @type {number}
+     * Station opening time, HH:MM
+     * @type {string}
      */
     @property('string')
     public start: string = '08:00';
 
     /**
-     * End working time in minutes (relatively to the day end time)
-     *
-     * @type {number}
+     * Station closing time, HH:MM
+     * @type {string}
      */
     @property('string')
     public end: string = '21:00';
 
     /**
-     * Max allowed reservations per customer per day
-     *
+     * Number of parallel washing boxes
      * @type {number}
      */
     @property('number')
@@ -70,7 +66,6 @@ export class TimeTableOptions {
 
     /**
      * Base washing type configuration options
-     *
      * @type {BaseTimeOption[]}
      */
     @property('BaseTimeOption[]')
@@ -84,9 +79,12 @@ export class TimeTableOptions {
 
     constructor() {
         this.baseTimeHash = this.baseTime.reduce(
-            (hash: any, item: BaseTimeOption) => {
+            (hash: { [key: string]: number }, item: BaseTimeOption) => {
                 hash[item.key] = item.duration;
+
                 return hash;
-            }, {});
+            },
+            {},
+        );
     }
 }

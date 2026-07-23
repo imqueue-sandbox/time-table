@@ -1,7 +1,8 @@
+import { classType, property } from '@imqueue/rpc';
 /*!
  * ISC License
  *
- * Copyright (c) 2018, Imqueue Sandbox
+ * Copyright (c) 2026, Imqueue Sandbox
  *
  * Permission to use, copy, modify, and/or distribute this software for any
  * purpose with or without fee is hereby granted, provided that the above
@@ -15,10 +16,6 @@
  * ACTION OF CONTRACT, NEGLIGENCE OR OTHER TORTIOUS ACTION, ARISING OUT OF
  * OR IN CONNECTION WITH THE USE OR PERFORMANCE OF THIS SOFTWARE.
  */
-/**
- * Reservations.
- * Based on: @see https://www.npmjs.com/package/sequelize-typescript
- */
 import {
     Table,
     Column,
@@ -30,11 +27,21 @@ import {
     DeletedAt,
     AllowNull,
 } from 'sequelize-typescript';
-import { property } from '@imqueue/rpc';
-import { BaseModel } from '..';
+import { BaseModel } from './BaseModel.js';
 
-@Table
-export class Reservation extends BaseModel<Reservation> {
+/**
+ * Reservation model. Doubles as an @imqueue/rpc complex type (@classType) and
+ * a sequelize-typescript model.
+ */
+@classType()
+@Table({
+    tableName: 'Reservation',
+    freezeTableName: true,
+    timestamps: true,
+    paranoid: true,
+    indexes: [{ fields: ['duration'], using: 'gist' }],
+})
+export class Reservation extends BaseModel {
     @property('number')
     @AutoIncrement
     @PrimaryKey

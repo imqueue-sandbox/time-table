@@ -1,6 +1,6 @@
 # time-table
 
-time-table - IMQ based service
+time-table - @imqueue based service
 
 ## Usage
 

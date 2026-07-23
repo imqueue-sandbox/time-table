@@ -1,95 +1,72 @@
 {
   "name": "time-table",
   "version": "1.0.0-0",
-  "description": "time-table - IMQ based service",
+  "description": "time-table - @imqueue based service",
   "keywords": [],
+  "type": "module",
+  "main": "index.js",
+  "engines": {
+    "node": ">=22.12.0"
+  },
   "scripts": {
-    "prepublish": "npm run build",
-    "build": "tsc",
-    "mocha": "nyc mocha",
-    "show:test": "/usr/bin/env node -e \"require('opn')('file://`pwd`/coverage/index.html',{wait:false});\"",
-    "show:doc": "/usr/bin/env node -e \"require('opn')('file://`pwd`/docs/index.html',{wait:false});\"",
-    "test": "npm run build && npm run mocha && npm run show:test",
+    "prepublishOnly": "npm run build",
+    "build": "npm run clean:compiled && tsc",
+    "test": "npm run build && node --test --test-timeout=15000 $(find test -name '*.spec.js')",
+    "test:coverage": "npm run build && node --enable-source-maps --test --experimental-test-coverage --test-timeout=15000 $(find test -name '*.spec.js')",
     "clean:dts": "find . -name '*.d.ts' -not -wholename '*node_modules*' -type f -delete",
     "clean:map": "find . -name '*.js.map' -not -wholename '*node_modules*' -type f -delete",
-    "clean:js": "find . -name '*.js' -not -wholename '*node_modules*' -not -wholename '*/orm/config.js' -type f -delete",
-    "clean:test": "rm -rf .nyc_output coverage",
-    "clean:doc": "rm -rf docs",
-    "clean": "npm run clean:test && npm run clean:dts && npm run clean:map && npm run clean:js && npm run clean:doc",
-    "doc": "npm run clean:doc && typedoc --excludePrivate --excludeExternals --hideGenerator --exclude \"**/+(debug|test|node_modules|docs|coverage|.nyc_output)/**/*\" --mode file --out ./docs . && npm run show:doc",
-    "start": "NODE_ENV=production /usr/bin/env node ./index.js",
-    "dev:ts": "NODE_ENV=development ts-node index.ts",
-    "dev": "npm run clean:dts && npm run clean:map && npm run clean:js && tsc && sequelize db:migrate ; ./node_modules/nodemon/bin/nodemon.js",
+    "clean:js": "find . -name '*.js' -not -wholename '*node_modules*' -type f -delete",
+    "clean:compiled": "npm run clean:js && npm run clean:dts && npm run clean:map",
+    "clean:build": "rm -rf ./node_modules/@types ; find . -name '*.js.map' -type f -delete ; find . -name '*.ts' -type f -delete",
+    "clean:test": "rm -rf coverage",
+    "clean": "npm run clean:test && npm run clean:compiled",
+    "start": "NODE_ENV=production /usr/bin/env node ./index.js LABEL=time-table",
+    "stop": "kill -s TERM $(ps aux | grep 'LABEL=time-table' | awk '{print $2}')",
+    "dev:run": "npm run build && LABEL=time-table /usr/bin/env node ./index.js",
+    "dev": "./node_modules/nodemon/bin/nodemon.js",
     "docker:build": "tsc && docker build -f Dockerfile -t time-table .",
     "docker:run": "docker run --rm -it --name time-table time-table",
     "docker:stop": "docker stop time-table",
-    "docker:ssh": "docker exec -it time-table sh"
+    "docker:ssh": "docker exec -it time-table sh",
+    "lint": "oxlint",
+    "lint:fix": "oxlint --fix",
+    "format:check": "oxfmt --check",
+    "format": "oxfmt --no-error-on-unmatched-pattern",
+    "prepare": "if [ \"$NODE_ENV\" != \"production\" ]; then husky; fi"
+  },
+  "lint-staged": {
+    "*.ts": [
+      "oxlint --fix",
+      "oxfmt --no-error-on-unmatched-pattern"
+    ]
   },
   "repository": {
     "type": "git",
-    "url": "git@github.com:/imqueue-sandbox/time-table"
+    "url": "git@github.com:imqueue-sandbox/time-table.git"
   },
   "bugs": {
     "url": "https://github.com/imqueue-sandbox/time-table/issues"
   },
   "homepage": "https://github.com/imqueue-sandbox/time-table",
-  "author": "Imqueue Sandbox <support@imqueue.com>",
+  "author": "Mykhailo Stadnyk <mikhus@gmail.com>",
   "license": "ISC",
   "dependencies": {
-    "@imqueue/rpc": "^1.2.11",
-    "@types/moment": "^2.13.0",
-    "@types/moment-timezone": "^0.5.9",
-    "dotenv": "^6.1.0",
-    "handy-redis": "^1.5.1",
-    "moment": "^2.22.2",
-    "moment-timezone": "^0.5.21",
-    "pg": "^7.6.0",
-    "sequelize": "^4.41.0",
-    "sequelize-cli": "^5.2.0",
-    "sequelize-typescript": "^0.6.6"
+    "@imqueue/core": "*",
+    "@imqueue/rpc": "*",
+    "dayjs": "^1.11.21",
+    "pg": "^8.22.0",
+    "reflect-metadata": "*",
+    "sequelize": "^6.37.8",
+    "sequelize-typescript": "^2.1.6",
+    "typescript": "*"
   },
   "devDependencies": {
-    "@types/chai": "^4.1.6",
-    "@types/dotenv": "^4.0.3",
-    "@types/mocha": "^5.2.5",
-    "@types/mock-require": "^2.0.0",
-    "@types/node": "^10.11.6",
-    "@types/sinon": "^5.0.5",
-    "chai": "^4.2.0",
-    "mocha": "^5.2.0",
-    "mocha-lcov-reporter": "^1.3.0",
-    "mock-require": "^3.0.2",
-    "nodemon": "^1.18.4",
-    "nyc": "^13.0.1",
-    "opn": "^5.4.0",
-    "reflect-metadata": "^0.1.12",
-    "sinon": "^6.3.5",
-    "source-map-support": "^0.5.9",
-    "ts-node": "^7.0.1",
-    "typedoc": "^0.12.0",
-    "typescript": "^3.1.2"
-  },
-  "main": "index.js",
-  "typescript": {
-    "definitions": "index.d.ts"
-  },
-  "nyc": {
-    "check-coverage": false,
-    "extension": [
-      ".ts"
-    ],
-    "exclude": [
-      "**/*.d.ts",
-      "**/test/**"
-    ],
-    "require": [
-      "ts-node/register"
-    ],
-    "reporter": [
-      "html",
-      "text",
-      "text-summary",
-      "lcovonly"
-    ]
+    "@types/node": "*",
+    "@types/validator": "*",
+    "husky": "*",
+    "lint-staged": "*",
+    "nodemon": "*",
+    "oxfmt": "*",
+    "oxlint": "*"
   }
 }

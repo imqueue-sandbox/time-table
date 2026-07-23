@@ -33,5 +33,3 @@ debug*
 .gitlab-ci.yml
 .DS_Store
 Thumbs.db
-!src/orm/config.js
-package-lock.json

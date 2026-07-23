@@ -1,7 +1,7 @@
 /*!
  * ISC License
  *
- * Copyright (c) 2018, Imqueue Sandbox
+ * Copyright (c) 2026, Imqueue Sandbox
  *
  * Permission to use, copy, modify, and/or distribute this software for any
  * purpose with or without fee is hereby granted, provided that the above
@@ -17,34 +17,54 @@
  */
 
 /**
- * Returns start time of a given data treating the given date as "today",
- * if date is not given will use real today date
+ * Returns start-of-day for a given date (treated as "today").
  *
- * @param {Date} date
+ * @param {Date} [date]
  * @return {Date}
  */
-export function today(date = new Date()) {
+export function today(date: Date = new Date()): Date {
     return new Date(
         date.getFullYear(),
         date.getMonth(),
         date.getDate(),
-        0, 0, 0, 0,
+        0,
+        0,
+        0,
+        0,
     );
 }
 
 /**
- * Returns "tomorrow" value for a given date which is start time of the
- * date after the given date. If date is not given will return real
- * tomorrow start time value
+ * Returns start-of-next-day for a given date ("tomorrow").
  *
- * @param {Date} date
+ * @param {Date} [date]
  * @return {Date}
  */
-export function tomorrow(date = new Date()) {
+export function tomorrow(date: Date = new Date()): Date {
     return new Date(
         date.getFullYear(),
         date.getMonth(),
         date.getDate() + 1,
-        0, 0, 0, 0,
+        0,
+        0,
+        0,
+        0,
     );
+}
+
+/**
+ * Extracts the lower-bound Date from a sequelize RANGE value, which may be a
+ * plain [lower, upper] tuple or an array of { value, inclusive } bounds.
+ *
+ * @param {any} range
+ * @return {Date}
+ */
+export function rangeLower(range: any): Date {
+    const lower = Array.isArray(range) ? range[0] : range;
+    const value =
+        lower && typeof lower === 'object' && 'value' in lower
+            ? lower.value
+            : lower;
+
+    return new Date(value);
 }

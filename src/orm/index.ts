@@ -1,7 +1,7 @@
 /*!
  * ISC License
  *
- * Copyright (c) 2018, Imqueue Sandbox
+ * Copyright (c) 2026, Imqueue Sandbox
  *
  * Permission to use, copy, modify, and/or distribute this software for any
  * purpose with or without fee is hereby granted, provided that the above
@@ -15,105 +15,53 @@
  * ACTION OF CONTRACT, NEGLIGENCE OR OTHER TORTIOUS ACTION, ARISING OUT OF
  * OR IN CONNECTION WITH THE USE OR PERFORMANCE OF THIS SOFTWARE.
  */
-import * as fs from 'fs';
-import { resolve, sep } from 'path';
 import { Sequelize } from 'sequelize-typescript';
-import { parse, Url } from 'url';
-import {
-    SequelizeConfig,
-} from 'sequelize-typescript/lib/types/SequelizeConfig';
-import {
-    DEFAULT_DB_DIALECT,
-    DEFAULT_DB_NAME,
-    DEFAULT_DB_PASS,
-    DEFAULT_DB_USER,
-    DEFAULT_DB_HOST,
-    DEFAULT_DB_PORT,
-} from '../../config';
-import { dbConfig, serviceOptions } from '../../config';
+import { DB_CONN_STR, DB_POOL } from '../../config.js';
+import { Reservation } from './Reservation.js';
 
-export * from './BaseModel';
-export * from './models/Reservation';
-
-const JS_EXT_RX = /\.js$/;
-const logger = serviceOptions.logger || console;
+export * from './BaseModel.js';
+export * from './Reservation.js';
 
 /**
- * Parses given database connection string into a SequelizeConfig
+ * Creates a Sequelize instance bound to the service models.
  *
- * @param {string} str
- * @return {SequelizeConfig}
- */
-export function parseConnectionString(str: string): SequelizeConfig {
-    let url: Url = parse(str);
-    let [user, pass] = (url.auth || '').split(/:/);
-
-    return {
-        name: (url.pathname || '').split(/\/|\\\\/)[1] || DEFAULT_DB_NAME,
-        dialect: (url.protocol || DEFAULT_DB_DIALECT).replace(/:/g, ''),
-        host: url.hostname || DEFAULT_DB_HOST,
-        port: Number(url.port) || DEFAULT_DB_PORT,
-        username: user || DEFAULT_DB_USER,
-        password: pass || DEFAULT_DB_PASS,
-        storage: ':memory:',
-    };
-}
-
-/**
- * Returns all files list from a given directory
- *
- * @param {string} dir
- * @return {string[]}
- */
-function walk(dir: string) {
-    let results: string[] = [];
-
-    for (let file of fs.readdirSync(dir)) {
-        file = resolve(dir, file);
-
-        const stat = fs.statSync(file);
-
-        if (stat && stat.isDirectory()) {
-            results = results.concat(walk(file));
-        }
-
-        else {
-            results.push(file);
-        }
-    }
-
-    return results;
-}
-
-/**
- * Initialized all known by this package database models and
- * returns instance of Sequelize, mapped with these models
- *
- * @param {boolean} [logging] - force logging option on Sequelize construction
+ * @param {boolean} [logging] - enable SQL logging
  * @return {Sequelize}
  */
-export function initModels(logging?: boolean): Sequelize {
-    const config = dbConfig;
+export function createOrm(logging: boolean = false): Sequelize {
+    return new Sequelize(DB_CONN_STR, {
+        models: [Reservation],
+        logging: logging ? (msg: string) => console.log(msg) : false,
+        pool: DB_POOL,
+    });
+}
 
-    if (config.url) {
-        Object.assign(config, parseConnectionString(dbConfig.url));
-    }
+/**
+ * Idempotent schema bootstrap: syncs the models, then installs the
+ * range_date() helper and the double-booking unique index (which the previous
+ * generation shipped as a sequelize-cli migration).
+ *
+ * @param {Sequelize} orm
+ * @return {Promise<void>}
+ */
+export async function migrate(orm: Sequelize): Promise<void> {
+    await orm.sync();
 
-    if (logging !== undefined) {
-        config.logging = !!logging;
-    }
+    await orm.query(
+        `CREATE OR REPLACE FUNCTION range_date(TSTZRANGE) RETURNS DATE
+            AS 'SELECT CAST(LOWER($1) AS DATE)'
+        LANGUAGE SQL
+        IMMUTABLE
+        RETURNS NULL ON NULL INPUT`,
+    );
 
-    const orm = new Sequelize(config);
-
-    orm.addModels(walk(resolve(__dirname, 'models'))
-        .filter(name => JS_EXT_RX.test(name))
-        .map(filename => require(filename)[
-            filename.split(sep)
-                .reverse()[0]
-                .replace(JS_EXT_RX, '')
-            ]));
-
-    logger.log('Database models initialized...');
-
-    return orm;
+    // prevents double-booking the same car within the same day (ignoring
+    // soft-deleted rows); enforced at the database level
+    await orm.query(
+        `CREATE UNIQUE INDEX IF NOT EXISTS car_duplicate_idx ON "Reservation" (
+            "carId",
+            range_date("duration"),
+            COALESCE("deletedAt", '1970-01-01')
+        )`,
+    );
 }
