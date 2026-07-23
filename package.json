@@ -1,7 +1,7 @@
 {
   "name": "time-table",
   "version": "1.0.0-0",
-  "description": "time-table - @imqueue based service",
+  "description": "@imqueue Car-Wash tutorial: reservations & schedule RPC microservice (PostgreSQL)",
   "keywords": [],
   "type": "module",
   "main": "index.js",
