@@ -25,7 +25,7 @@ built from independent RPC microservices that communicate over a Redis-backed me
 | [web-app](https://github.com/imqueue-sandbox/web-app) | React front-end on `api` (GraphQL/Relay) | — |
 | [web-app-rest](https://github.com/imqueue-sandbox/web-app-rest) | React front-end on `api-rest` (REST) | — |
 
-The backend services are transport-agnostic: two interchangeable gateways and two matching
+The backend services are transport-agnostic: two interchangeable gateways and two independent
 front-ends prove the same fleet can be fronted by completely different API styles without
 changing a single service.
 
