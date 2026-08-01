@@ -15,8 +15,10 @@
  * ACTION OF CONTRACT, NEGLIGENCE OR OTHER TORTIOUS ACTION, ARISING OUT OF
  * OR IN CONNECTION WITH THE USE OR PERFORMANCE OF THIS SOFTWARE.
  */
+import type { IMQORMOptions } from '@imqueue/pg-sequelize';
 import type { IMQServiceOptions } from '@imqueue/rpc';
 import { DEFAULT_IMQ_SERVICE_OPTIONS as opts } from '@imqueue/rpc';
+import { fileURLToPath } from 'node:url';
 
 try {
     // native .env files support; throws when no .env file exists
@@ -53,4 +55,25 @@ export const DB_POOL = {
     min: 2,
     idle: 30000,
     acquire: 30000,
+};
+
+/**
+ * Start-up options for the @imqueue/pg-sequelize connection. Only the first
+ * `database()` call reads them, so this is start-up config, not something to
+ * vary per call.
+ */
+export const dbConfig: IMQORMOptions = {
+    logger: console,
+    connectionString: DB_CONN_STR,
+    sequelize: {
+        dialect: DEFAULT_DB_DIALECT,
+        pool: DB_POOL,
+        // falsy leaves logging off; truthy hands SQL to the package formatter,
+        // which honours SQL_PRETTIFY / SQL_COLORIZE
+        logging: !!Number(process.env['SQL_LOG'] || 0),
+    },
+    // database() walks this for COMPILED models, taking from each file the
+    // export named after it - so it must point at the build output, and is
+    // resolved off this module rather than off cwd
+    modelsPath: fileURLToPath(new URL('./src/orm/models/', import.meta.url)),
 };

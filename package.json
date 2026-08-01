@@ -52,12 +52,12 @@
   "license": "ISC",
   "dependencies": {
     "@imqueue/core": "*",
+    "@imqueue/pg-sequelize": "*",
     "@imqueue/rpc": "*",
     "dayjs": "^1.11.21",
     "pg": "^8.22.0",
     "reflect-metadata": "*",
     "sequelize": "^6.37.8",
-    "sequelize-typescript": "^2.1.6",
     "typescript": "*"
   },
   "devDependencies": {

@@ -15,31 +15,30 @@
  * ACTION OF CONTRACT, NEGLIGENCE OR OTHER TORTIOUS ACTION, ARISING OUT OF
  * OR IN CONNECTION WITH THE USE OR PERFORMANCE OF THIS SOFTWARE.
  */
-import { Sequelize } from 'sequelize-typescript';
-import { DB_CONN_STR, DB_POOL } from '../../config.js';
-import { Reservation } from './Reservation.js';
+import type { Sequelize } from '@imqueue/pg-sequelize';
+import { database } from '@imqueue/pg-sequelize';
+import { dbConfig } from '../../config.js';
 
-export * from './BaseModel.js';
-export * from './Reservation.js';
+export * from './models/Reservation.js';
 
 /**
- * Creates a Sequelize instance bound to the service models.
+ * Connects to the database and registers the models found under
+ * `dbConfig.modelsPath`.
  *
- * @param {boolean} [logging] - enable SQL logging
+ * The connection is a process-wide singleton owned by @imqueue/pg-sequelize:
+ * the first call builds it, every later one hands back the same instance and
+ * ignores its argument.
+ *
  * @return {Sequelize}
  */
-export function createOrm(logging: boolean = false): Sequelize {
-    return new Sequelize(DB_CONN_STR, {
-        models: [Reservation],
-        logging: logging ? (msg: string) => console.log(msg) : false,
-        pool: DB_POOL,
-    });
+export function connect(): Sequelize {
+    return database(dbConfig);
 }
 
 /**
- * Idempotent schema bootstrap: syncs the models, then installs the
- * range_date() helper and the double-booking unique index (which the previous
- * generation shipped as a sequelize-cli migration).
+ * Idempotent schema bootstrap: syncs the models - which also creates the
+ * indices they declare with @ColumnIndex - then installs what the model
+ * declarations cannot express.
  *
  * @param {Sequelize} orm
  * @return {Promise<void>}
@@ -55,8 +54,10 @@ export async function migrate(orm: Sequelize): Promise<void> {
         RETURNS NULL ON NULL INPUT`,
     );
 
-    // prevents double-booking the same car within the same day (ignoring
-    // soft-deleted rows); enforced at the database level
+    // Prevents double-booking the same car within the same day, ignoring
+    // soft-deleted rows. A key of one column plus two expressions is more than
+    // @ColumnIndex can declare - it emits its `expression` as a single index
+    // key - so this one is written out.
     await orm.query(
         `CREATE UNIQUE INDEX IF NOT EXISTS car_duplicate_idx ON "Reservation" (
             "carId",

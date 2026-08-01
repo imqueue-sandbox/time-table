@@ -1,4 +1,3 @@
-import { classType, property } from '@imqueue/rpc';
 /*!
  * ISC License
  *
@@ -17,21 +16,25 @@ import { classType, property } from '@imqueue/rpc';
  * OR IN CONNECTION WITH THE USE OR PERFORMANCE OF THIS SOFTWARE.
  */
 import {
-    Table,
-    Column,
-    DataType,
-    AutoIncrement,
-    PrimaryKey,
-    CreatedAt,
-    UpdatedAt,
-    DeletedAt,
     AllowNull,
-} from 'sequelize-typescript';
-import { BaseModel } from './BaseModel.js';
+    AutoIncrement,
+    BaseModel,
+    Column,
+    ColumnIndex,
+    CreatedAt,
+    DataType,
+    DeletedAt,
+    IndexMethod,
+    PrimaryKey,
+    Table,
+    UpdatedAt,
+} from '@imqueue/pg-sequelize';
+import { classType, property } from '@imqueue/rpc';
 
 /**
  * Reservation model. Doubles as an @imqueue/rpc complex type (@classType) and
- * a sequelize-typescript model.
+ * an @imqueue/pg-sequelize model, so the same declaration describes the wire
+ * format and the table.
  */
 @classType()
 @Table({
@@ -39,15 +42,20 @@ import { BaseModel } from './BaseModel.js';
     freezeTableName: true,
     timestamps: true,
     paranoid: true,
-    indexes: [{ fields: ['duration'], using: 'gist' }],
 })
-export class Reservation extends BaseModel {
+export class Reservation extends BaseModel<Reservation> {
     @property('number')
     @AutoIncrement
     @PrimaryKey
     @Column(DataType.BIGINT)
     public id: number;
 
+    /**
+     * The double-booking guard is a unique index over one column and two
+     * expressions; @ColumnIndex emits its `expression` as a single index key,
+     * so that composite is beyond what it can declare and stays an explicit
+     * statement in migrate().
+     */
     @property('string')
     @AllowNull(false)
     @Column(DataType.STRING(32))
@@ -63,7 +71,16 @@ export class Reservation extends BaseModel {
     @Column(DataType.ENUM({ values: ['fast', 'std', 'full'] }))
     public type: 'fast' | 'std' | 'full';
 
+    /**
+     * GiST is the method that makes range containment - the one query this
+     * service runs on every read - use an index instead of a scan.
+     */
     @property('[string, string]')
+    @ColumnIndex({
+        name: 'reservation_duration',
+        method: IndexMethod.GIST,
+        safe: true,
+    })
     @AllowNull(false)
     @Column(DataType.RANGE(DataType.DATE))
     public duration: [Date, Date];

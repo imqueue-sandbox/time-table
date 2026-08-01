@@ -9,6 +9,9 @@ hours, number of boxes, washing types and their durations). It never speaks HTTP
 is exposed over the `@imqueue/rpc` Redis message queue and consumed by the gateways (`api`,
 `api-rest`).
 
+Persistence goes through **[@imqueue/pg-sequelize](https://imqueue.org/api/pg-sequelize/latest/)**,
+the framework's Sequelize toolkit — see [Data layer](#data-layer).
+
 ## About the tutorial
 
 This repo is one piece of the **imqueue-sandbox** tutorial — a complete car-wash booking app
@@ -56,6 +59,33 @@ per calendar day. A PostgreSQL unique-violation (`23505`) is translated into the
 (soft-deleted), so cancelling frees the slot again. The schema (including the index and a
 `range_date()` helper function) is created automatically on start via `orm.sync()` + migration.
 
+## Data layer
+
+The ORM stack comes from [`@imqueue/pg-sequelize`](https://imqueue.org/api/pg-sequelize/latest/),
+which is the single import surface for it — models import `Table`, `Column`, `DataType` and the
+rest from there rather than from `sequelize-typescript` directly.
+
+| Piece | Where | What it does |
+|---|---|---|
+| `dbConfig` | [`config.ts`](config.ts) | `IMQORMOptions`: connection string, pool, SQL logging, and the path the models are discovered under. |
+| `connect()` | [`src/orm/index.ts`](src/orm/index.ts) | `database(dbConfig)` — the process-wide connection singleton, with the models registered. |
+| `migrate()` | [`src/orm/index.ts`](src/orm/index.ts) | `orm.sync()`, then the `range_date()` function and the composite unique index. |
+| `Reservation` | [`src/orm/models/Reservation.ts`](src/orm/models/Reservation.ts) | The model — and, via `@classType()`/`@property()`, the RPC wire type as well. |
+
+Two details worth knowing:
+
+- **Models live in their own directory.** `database()` walks `dbConfig.modelsPath` for *compiled*
+  `.js` files and takes from each the export named after the file, so `src/orm/models/` holds one
+  model per file and nothing else (`index.js` there would hand Sequelize `undefined`).
+- **Indices are declared on the columns.** The GiST index that makes range containment — the one
+  query every read runs — use an index is `@ColumnIndex({ method: IndexMethod.GIST })` on
+  `duration`. The double-booking guard is a key of one column plus two expressions, which is more
+  than `@ColumnIndex` can express, so that one is an explicit statement in `migrate()`.
+
+Reads build their statement with `query.autoQuery()`, which narrows the `SELECT` to the columns
+the caller asked for — and drops names that are not columns, falling back to the primary key — so
+a gateway passing its GraphQL selection set through gets exactly those columns and nothing else.
+
 ## Configuration
 
 Environment variables (loaded from an optional `.env` via `process.loadEnvFile()`):
@@ -64,6 +94,9 @@ Environment variables (loaded from an optional `.env` via `process.loadEnvFile()
 |---|---|---|
 | `DB_CONN_STR` | `postgres://tutmq:tutmq@localhost:5432/tutmq` | PostgreSQL connection string. |
 | `DB_POOL_MAX` | `250` | Maximum Sequelize connection-pool size. |
+| `SQL_LOG` | `0` | Set to `1` to log every statement the service issues. |
+| `SQL_PRETTIFY` | `0` | Set to `1` to break logged SQL across lines (read by `@imqueue/pg-sequelize`). |
+| `SQL_COLORIZE` | `0` | Set to `1` to colourise logged SQL. |
 | `IMQ_REDIS` | `localhost:6379` | Redis endpoint(s) for the RPC message queue. |
 
 ## Running

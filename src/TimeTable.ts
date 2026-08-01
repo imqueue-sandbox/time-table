@@ -15,14 +15,17 @@
  * ACTION OF CONTRACT, NEGLIGENCE OR OTHER TORTIOUS ACTION, ARISING OUT OF
  * OR IN CONNECTION WITH THE USE OR PERFORMANCE OF THIS SOFTWARE.
  */
+import type { FindOptions, Sequelize } from '@imqueue/pg-sequelize';
 import type { IMessageQueue } from '@imqueue/rpc';
-import type { Sequelize } from 'sequelize-typescript';
+import { query } from '@imqueue/pg-sequelize';
 import { expose, IMQService, lock, logged, profile } from '@imqueue/rpc';
 import dayjs from 'dayjs';
 import { createRequire } from 'node:module';
+// @imqueue/pg-sequelize re-exports the sequelize-typescript surface, but the
+// operator symbols come from sequelize itself
 import { Op } from 'sequelize';
 import { today, tomorrow, rangeLower } from './lib/index.js';
-import { Reservation, createOrm, migrate } from './orm/index.js';
+import { Reservation, connect, migrate } from './orm/index.js';
 import { TimeTableOptions } from './types/index.js';
 
 const require = createRequire(import.meta.url);
@@ -52,7 +55,7 @@ export class TimeTable extends IMQService {
     @profile()
     public async start(): Promise<IMessageQueue | undefined> {
         this.logger.log('Initializing PostgreSQL connection...');
-        this.orm = createOrm();
+        this.orm = connect();
         await this.orm.authenticate();
         await migrate(this.orm);
 
@@ -75,14 +78,19 @@ export class TimeTable extends IMQService {
     ): Promise<Reservation[]> {
         const dateObj = date ? new Date(date) : new Date();
 
-        return await Reservation.findAll({
-            where: {
-                duration: {
-                    [Op.contained]: [today(dateObj), tomorrow(dateObj)],
+        // autoQuery() narrows the caller's field list to real columns (falling
+        // back to the primary key when none of them are), so an unknown name
+        // cannot reach the SQL; the range containment it cannot express is
+        // merged in as a where fragment
+        return await Reservation.findAll(
+            query.autoQuery<FindOptions>(Reservation, fields, {
+                where: {
+                    duration: {
+                        [Op.contained]: [today(dateObj), tomorrow(dateObj)],
+                    },
                 },
-            },
-            attributes: fields,
-        });
+            }),
+        );
     }
 
     /**
@@ -98,7 +106,10 @@ export class TimeTable extends IMQService {
         id: string,
         fields?: string[],
     ): Promise<Partial<Reservation> | null> {
-        return await Reservation.findByPk(id, { attributes: fields });
+        return await Reservation.findByPk(
+            id,
+            query.autoQuery<FindOptions>(Reservation, fields),
+        );
     }
 
     /**
